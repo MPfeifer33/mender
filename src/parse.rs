@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
@@ -62,8 +63,10 @@ pub fn parse_errors(output: &str) -> Vec<ParsedError> {
 fn try_parse_rust_error(line: &str) -> Option<ParsedError> {
     // error[E0432]: unresolved import `crate::foo`
     //  --> src/main.rs:3:5
-    let re = Regex::new(r"^error(?:\[E\d+\])?: (.+)$").unwrap();
-    let loc_re = Regex::new(r"^\s+--> (.+):(\d+):(\d+)$").unwrap();
+    static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^error(?:\[E\d+\])?: (.+)$").unwrap());
+    static LOC_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+--> (.+):(\d+):(\d+)$").unwrap());
+    let re = &*RE;
+    let loc_re = &*LOC_RE;
 
     if let Some(cap) = re.captures(line) {
         let message = cap[1].to_string();
@@ -94,7 +97,8 @@ fn try_parse_rust_error(line: &str) -> Option<ParsedError> {
     }
 
     // warning: unused variable
-    let warn_re = Regex::new(r"^warning(?:\[[\w]+\])?: (.+)$").unwrap();
+    static WARN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^warning(?:\[[\w]+\])?: (.+)$").unwrap());
+    let warn_re = &*WARN_RE;
     if let Some(cap) = warn_re.captures(line) {
         return Some(ParsedError {
             file: None,
@@ -112,7 +116,8 @@ fn try_parse_rust_error(line: &str) -> Option<ParsedError> {
 
 fn try_parse_rust_test_failure(line: &str) -> Option<ParsedError> {
     // test my_test ... FAILED
-    let re = Regex::new(r"^test (.+) \.\.\. FAILED$").unwrap();
+    static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^test (.+) \.\.\. FAILED$").unwrap());
+    let re = &*RE;
     if let Some(cap) = re.captures(line) {
         return Some(ParsedError {
             file: None,
@@ -126,7 +131,8 @@ fn try_parse_rust_test_failure(line: &str) -> Option<ParsedError> {
     }
 
     // thread 'test_name' panicked at 'message', file:line:col
-    let panic_re = Regex::new(r"thread '(.+?)' .* panicked at (.+)").unwrap();
+    static PANIC_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"thread '(.+?)' .* panicked at (.+)").unwrap());
+    let panic_re = &*PANIC_RE;
     if let Some(cap) = panic_re.captures(line) {
         return Some(ParsedError {
             file: None,
@@ -160,7 +166,8 @@ fn classify_rust_error(message: &str) -> ErrorType {
 
 fn try_parse_typescript_error(line: &str) -> Option<ParsedError> {
     // src/foo.ts(10,5): error TS2304: Cannot find name 'foo'.
-    let re = Regex::new(r"^(.+?)\((\d+),(\d+)\): (error|warning) (TS\d+): (.+)$").unwrap();
+    static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.+?)\((\d+),(\d+)\): (error|warning) (TS\d+): (.+)$").unwrap());
+    let re = &*RE;
     if let Some(cap) = re.captures(line) {
         let severity = if &cap[4] == "error" { Severity::Error } else { Severity::Warning };
         return Some(ParsedError {
@@ -180,7 +187,8 @@ fn try_parse_typescript_error(line: &str) -> Option<ParsedError> {
 
 fn try_parse_python_error(line: &str) -> Option<ParsedError> {
     // File "foo.py", line 10, in bar
-    let re = Regex::new(r#"^\s*File "(.+?)", line (\d+)"#).unwrap();
+    static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"^\s*File "(.+?)", line (\d+)"#).unwrap());
+    let re = &*RE;
     if let Some(cap) = re.captures(line) {
         return Some(ParsedError {
             file: Some(cap[1].to_string()),
@@ -194,7 +202,8 @@ fn try_parse_python_error(line: &str) -> Option<ParsedError> {
     }
 
     // ImportError: No module named 'foo'
-    let import_re = Regex::new(r"^(Import|Module)Error: (.+)$").unwrap();
+    static IMPORT_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(Import|Module)Error: (.+)$").unwrap());
+    let import_re = &*IMPORT_RE;
     if let Some(cap) = import_re.captures(line) {
         return Some(ParsedError {
             file: None,
@@ -208,7 +217,8 @@ fn try_parse_python_error(line: &str) -> Option<ParsedError> {
     }
 
     // TypeError, ValueError, etc.
-    let err_re = Regex::new(r"^(\w+Error): (.+)$").unwrap();
+    static ERR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+Error): (.+)$").unwrap());
+    let err_re = &*ERR_RE;
     if let Some(cap) = err_re.captures(line) {
         return Some(ParsedError {
             file: None,
@@ -228,7 +238,8 @@ fn try_parse_python_error(line: &str) -> Option<ParsedError> {
 
 fn try_parse_go_error(line: &str) -> Option<ParsedError> {
     // ./main.go:10:5: undefined: foo
-    let re = Regex::new(r"^(.+?\.go):(\d+):(\d+): (.+)$").unwrap();
+    static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.+?\.go):(\d+):(\d+): (.+)$").unwrap());
+    let re = &*RE;
     if let Some(cap) = re.captures(line) {
         return Some(ParsedError {
             file: Some(cap[1].to_string()),
@@ -304,5 +315,11 @@ mod tests {
         let errors = parse_errors(output);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].file, Some("./main.go".to_string()));
+    }
+
+    #[test]
+    fn parse_empty_input() {
+        assert!(parse_errors("").is_empty());
+        assert!(parse_errors("\n\n\n").is_empty());
     }
 }

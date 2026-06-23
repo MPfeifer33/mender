@@ -50,7 +50,9 @@ fn get_error_output(
     run: Option<&[String]>,
 ) -> Result<String, MenderError> {
     if let Some(path) = file {
-        std::fs::read_to_string(path).map_err(MenderError::Io)
+        std::fs::read_to_string(path).map_err(|e| {
+            MenderError::Validation(format!("cannot read '{}': {}", path.display(), e))
+        })
     } else if let Some(cmd_parts) = run {
         if cmd_parts.is_empty() {
             return Err(MenderError::Validation("No command provided".into()));
@@ -58,7 +60,7 @@ fn get_error_output(
         let output = std::process::Command::new(&cmd_parts[0])
             .args(&cmd_parts[1..])
             .output()
-            .map_err(MenderError::Io)?;
+            .map_err(|e| MenderError::Validation(format!("failed to run '{}': {}", &cmd_parts[0], e)))?;
 
         let mut combined = String::from_utf8_lossy(&output.stdout).to_string();
         combined.push('\n');
