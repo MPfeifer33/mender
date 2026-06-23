@@ -203,6 +203,75 @@ fn suggest_fix_order(clusters: &[ErrorCluster]) -> Vec<String> {
     }).collect()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::parse_errors;
+
+    #[test]
+    fn triage_empty_input() {
+        let errors = parse_errors("");
+        let result = triage(&errors);
+        assert!(result.clusters.is_empty());
+        assert!(result.fix_order.is_empty());
+        assert_eq!(result.total_errors, 0);
+        assert_eq!(result.total_warnings, 0);
+    }
+
+    #[test]
+    fn triage_clusters_same_type() {
+        let output = "error[E0432]: unresolved import `crate::foo`\nerror[E0432]: unresolved import `crate::bar`\n";
+        let errors = parse_errors(output);
+        let result = triage(&errors);
+        assert!(!result.clusters.is_empty());
+        assert!(result.total_errors > 0);
+    }
+
+    #[test]
+    fn fix_order_imports_before_tests() {
+        let output = "test my_test ... FAILED\nerror[E0432]: unresolved import `crate::foo`\n";
+        let errors = parse_errors(output);
+        let result = triage(&errors);
+        // Import errors should come before test failures in fix order
+        if result.fix_order.len() >= 2 {
+            assert!(result.fix_order[0].contains("import"));
+        }
+    }
+
+    #[test]
+    fn triage_with_warnings_still_passes() {
+        let output = "warning: unused variable `x`\n";
+        let errors = parse_errors(output);
+        let result = triage(&errors);
+        assert_eq!(result.total_warnings, 1);
+        assert_eq!(result.total_errors, 0);
+    }
+
+    #[test]
+    fn merge_locations_pairs_error_with_location() {
+        let errors = vec![
+            ParsedError {
+                file: None, line: None, column: None,
+                message: "unresolved import".into(),
+                error_type: ErrorType::ImportError,
+                severity: Severity::Error,
+                raw_line: "error: unresolved import".into(),
+            },
+            ParsedError {
+                file: Some("src/main.rs".into()), line: Some(3), column: Some(5),
+                message: String::new(),
+                error_type: ErrorType::CompileError,
+                severity: Severity::Info,
+                raw_line: " --> src/main.rs:3:5".into(),
+            },
+        ];
+        let merged = merge_locations(&errors);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].file, Some("src/main.rs".into()));
+        assert_eq!(merged[0].message, "unresolved import");
+    }
+}
+
 impl ErrorCluster {
     fn error_type_label(&self) -> &'static str {
         match self.error_type {

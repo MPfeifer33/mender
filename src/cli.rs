@@ -19,6 +19,7 @@ pub struct Cli {
 }
 
 impl Cli {
+    #[allow(dead_code)] // Available for future repo-context features
     pub fn resolve_repo(&self) -> Result<PathBuf, MenderError> {
         if let Some(ref repo) = self.repo {
             return Ok(repo.clone());
